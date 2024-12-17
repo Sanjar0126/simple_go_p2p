@@ -1,13 +1,19 @@
 # Build stage
 FROM golang:1.22-alpine AS builder
-WORKDIR /app
-COPY . .
-RUN go build -o server server/main.go
+
+RUN mkdir -p $GOPATH/src/app
+WORKDIR $GOPATH/src/app
+
+COPY . ./
+RUN export CGO_ENABLED=0 && \
+    export GOOS=linux && \
+    go build -o server server/main.go && \
+    mv ./server /
 
 # Run stage
 FROM alpine:3.18
 WORKDIR /app
-COPY --from=builder /app/server .
+COPY --from=builder server .
 
 EXPOSE 9090
-ENTRYPOINT [ "/app/server" ]
+ENTRYPOINT [ "/main" ]
