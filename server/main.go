@@ -44,7 +44,7 @@ func handleConnection(conn net.Conn) {
 	var peer Peer
 	decoder := json.NewDecoder(conn)
 	if err := decoder.Decode(&peer); err != nil {
-		fmt.Println("Invalid data:", err)
+		// fmt.Println("Invalid data:", err)
 		return
 	}
 
