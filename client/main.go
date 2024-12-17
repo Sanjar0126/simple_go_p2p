@@ -23,7 +23,7 @@ func main() {
 	id, _ := reader.ReadString('\n')
 	id = strings.TrimSpace(id)
 
-	conn, err := net.Dial("tcp", "localhost:9090")
+	conn, err := net.Dial("tcp", "3.75.158.163:9090")
 	if err != nil {
 		fmt.Println("Error connecting to server:", err)
 		return

@@ -20,14 +20,14 @@ var (
 func main() {
 	port := 9090
 
-	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
+	listener, err := net.Listen("tcp", fmt.Sprintf("0.0.0.0:%d", port))
 	if err != nil {
 		fmt.Println("Error starting server:", err)
 		return
 	}
 	defer listener.Close()
 
-	fmt.Printf("Discovery server listening on port :%d", port)
+	fmt.Printf("Discovery server listening on  0.0.0.0:%d", port)
 	for {
 		conn, err := listener.Accept()
 		if err != nil {
