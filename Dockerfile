@@ -16,4 +16,4 @@ WORKDIR /app
 COPY --from=builder server .
 
 EXPOSE 9090
-ENTRYPOINT [ "/main" ]
+ENTRYPOINT [ "/app/main" ]
