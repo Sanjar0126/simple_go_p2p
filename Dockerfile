@@ -1,19 +1,18 @@
-# Build stage
-FROM golang:1.22-alpine AS builder
+FROM golang:1.22-alpine
 
-RUN mkdir -p $GOPATH/src/app
-WORKDIR $GOPATH/src/app
-
-COPY . ./
-RUN export CGO_ENABLED=0 && \
-    export GOOS=linux && \
-    go build -o server server/main.go && \
-    mv ./server /
-
-# Run stage
-FROM alpine:3.18
+# Add git for downloading dependencies
+RUN apk add --no-cache git
 WORKDIR /app
-COPY --from=builder server .
 
-EXPOSE 9090
-ENTRYPOINT [ "/app/main" ]
+# Copy go mod and sum files
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY server/main.go .
+COPY static/ static/
+
+RUN go build -o main .
+
+EXPOSE 8080
+
+CMD ["./main"]
