@@ -1,68 +1,173 @@
+// main.go
 package main
 
 import (
-	"encoding/json"
-	"fmt"
-	"net"
+	"log"
+	"net/http"
 	"sync"
+
+	"github.com/gorilla/websocket"
 )
 
-type Peer struct {
-	ID   string `json:"id"`
-	Addr string `json:"addr"`
+type Room struct {
+	Peers map[string]*websocket.Conn
+	mu    sync.Mutex
+}
+
+type Message struct {
+	Event string         `json:"event"`
+	Data  map[string]any `json:"data"`
+	Room  string         `json:"room"`
 }
 
 var (
-	peers = make(map[string]Peer)
-	mu    sync.Mutex
+	rooms    = make(map[string]*Room)
+	upgrader = websocket.Upgrader{
+		CheckOrigin: func(r *http.Request) bool {
+			return true // all origins
+		},
+	}
 )
 
 func main() {
-	port := 9090
+	http.HandleFunc("/ws", handleWebSocket)
+	http.Handle("/", http.FileServer(http.Dir("static")))
 
-	listener, err := net.Listen("tcp", fmt.Sprintf("0.0.0.0:%d", port))
-	if err != nil {
-		fmt.Println("Error starting server:", err)
-		return
-	}
-	defer listener.Close()
-
-	fmt.Printf("Discovery server listening on  0.0.0.0:%d", port)
-	for {
-		conn, err := listener.Accept()
-		if err != nil {
-			fmt.Println("Error accepting connection:", err)
-			continue
-		}
-		go handleConnection(conn)
+	log.Println("Server starting on :8080")
+	if err := http.ListenAndServe(":8080", nil); err != nil {
+		log.Fatal(err)
 	}
 }
 
-func handleConnection(conn net.Conn) {
+func handleWebSocket(w http.ResponseWriter, r *http.Request) {
+	conn, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		log.Printf("Websocket upgrade failed: %v", err)
+		return
+	}
 	defer conn.Close()
 
-	var peer Peer
-	decoder := json.NewDecoder(conn)
-	if err := decoder.Decode(&peer); err != nil {
-		// fmt.Println("Invalid data:", err)
+	for {
+		var msg Message
+		if err := conn.ReadJSON(&msg); err != nil {
+			log.Printf("Error reading message: %v", err)
+			break
+		}
+
+		switch msg.Event {
+		case "join":
+			handleJoin(conn, msg)
+		case "offer":
+			handleOffer(conn, msg)
+		case "answer":
+			handleAnswer(conn, msg)
+		case "ice-candidate":
+			handleICECandidate(conn, msg)
+		}
+	}
+}
+
+func handleJoin(conn *websocket.Conn, msg Message) {
+	roomID := msg.Room
+	peerId, ok := msg.Data["peerId"].(string)
+	if !ok {
+		log.Printf("Invalid peerId in join message")
 		return
 	}
 
-	mu.Lock()
-	peers[peer.ID] = peer
-	mu.Unlock()
-
-	fmt.Println("Registered peer:", peer.ID, "at", peer.Addr)
-
-	mu.Lock()
-	peerList := make([]Peer, 0, len(peers))
-	for _, p := range peers {
-		peerList = append(peerList, p)
+	if _, exists := rooms[roomID]; !exists {
+		rooms[roomID] = &Room{
+			Peers: make(map[string]*websocket.Conn),
+		}
 	}
-	mu.Unlock()
 
-	encoder := json.NewEncoder(conn)
-	if err := encoder.Encode(peerList); err != nil {
-		fmt.Println("Error sending peer list:", err)
+	room := rooms[roomID]
+	room.mu.Lock()
+	room.Peers[peerId] = conn
+	room.mu.Unlock()
+
+	// Notify others in room
+	for _, peer := range room.Peers {
+		if peer != conn {
+			peer.WriteJSON(Message{
+				Event: "peer-joined",
+				Data: map[string]any{
+					"peerId": peerId,
+				},
+				Room: roomID,
+			})
+		}
+	}
+}
+
+func handleOffer(conn *websocket.Conn, msg Message) {
+	room := rooms[msg.Room]
+	if room == nil {
+		log.Printf("Room not found: %s", msg.Room)
+		return
+	}
+
+	target, ok := msg.Data["target"].(string)
+	if !ok {
+		log.Printf("Invalid target in offer message")
+		return
+	}
+
+	room.mu.Lock()
+	targetPeer := room.Peers[target]
+	room.mu.Unlock()
+
+	if targetPeer != nil {
+		if err := targetPeer.WriteJSON(msg); err != nil {
+			log.Printf("Error sending offer: %v", err)
+		}
+	}
+}
+
+func handleAnswer(conn *websocket.Conn, msg Message) {
+	room := rooms[msg.Room]
+	if room == nil {
+		log.Printf("Room not found: %s", msg.Room)
+		return
+	}
+
+	target, ok := msg.Data["target"].(string)
+	if !ok {
+		log.Printf("Invalid target in answer message")
+		return
+	}
+
+	room.mu.Lock()
+	targetPeer := room.Peers[target]
+	room.mu.Unlock()
+
+	if targetPeer != nil {
+		if err := targetPeer.WriteJSON(msg); err != nil {
+			log.Printf("Error sending answer: %v", err)
+		}
+	}
+}
+
+func handleICECandidate(conn *websocket.Conn, msg Message) {
+	room := rooms[msg.Room]
+	if room == nil {
+		log.Printf("Room not found: %s", msg.Room)
+		return
+	}
+
+	target, ok := msg.Data["target"].(string)
+	if !ok {
+		log.Printf("Invalid target in ICE candidate message")
+		return
+	}
+
+	room.mu.Lock()
+	targetPeer := room.Peers[target]
+	room.mu.Unlock()
+
+	if targetPeer != nil {
+		if err := targetPeer.WriteJSON(msg); err != nil {
+			log.Printf("Error sending ICE candidate: %v", err)
+		}
 	}
 }
