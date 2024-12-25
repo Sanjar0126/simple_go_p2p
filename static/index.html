@@ -83,7 +83,7 @@
             if (!roomId) return;
             
             currentRoom = roomId;
-            ws = new WebSocket(`ws://${window.location.host}/ws`);
+            ws = new WebSocket(`wss://${window.location.host}/ws`);
             
             ws.onopen = () => {
                 ws.send(JSON.stringify({
