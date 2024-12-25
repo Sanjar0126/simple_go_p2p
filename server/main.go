@@ -30,6 +30,12 @@ var (
 	}
 )
 
+type TurnConfig struct {
+	TurnURL        string
+	TurnUsername   string
+	TurnCredential string
+}
+
 func main() {
 	port := os.Getenv("PORT")
 	if port == "" {
