@@ -1,1 +1,3 @@
-# simple_go_p2p_chat
+# simple_go_p2p
+
+Demo: https://simple-go-p2p-chat.onrender.com/
