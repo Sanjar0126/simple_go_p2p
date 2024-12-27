@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>WebRTC File Sharing</title>
+    <title>WebRTC File Sharing with Audio Streaming</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -30,29 +30,30 @@
             width: 100%;
             margin: 10px 0;
         }
-        #log {
-            border: 1px solid #ccc;
-            padding: 10px;
+        #audioControls {
             margin-top: 20px;
-            max-height: 200px;
-            overflow-y: auto;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
         }
     </style>
 </head>
 <body>
-    <h1>WebRTC File Sharing</h1>
+    <h1>WebRTC File/Audio Sharing</h1>
     <div>
         <input type="text" id="roomId" placeholder="Enter room ID">
         <button onclick="joinRoom()" class="button">Join Room</button>
     </div>
     <div>
-        <input type="file" id="fileInput">
+        <input type="file" id="fileInput" accept="*">
         <button onclick="document.getElementById('fileInput').click()" class="button">Select File</button>
         <button onclick="sendFile()" class="button">Send File</button>
     </div>
     <div id="status"></div>
     <progress id="progress" max="100" value="0" style="display: none;"></progress>
-    <div id="log"></div>
+    <div id="audioControls" style="display: none;">
+        <audio id="audioPlayer" controls></audio>
+    </div>
 
     <script src="env.js"></script>
     <script src="index.js"></script>

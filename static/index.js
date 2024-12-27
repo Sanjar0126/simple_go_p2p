@@ -7,13 +7,10 @@ let file;
 let receivedSize = 0;
 let receivedData = [];
 let remotePeerId = null;
-
-function log(message) {
-    console.log(message);
-    const logDiv = document.getElementById('log');
-    logDiv.innerHTML += message + '<br>';
-    logDiv.scrollTop = logDiv.scrollHeight;
-}
+let mediaSource;
+let sourceBuffer;
+let audioQueue = [];
+let isAudioFile = false;
 
 const config = {
     iceServers: [
@@ -42,28 +39,87 @@ const config = {
             credential: getTurnPasswordd()
         },
     ]
-};
+}
+
+function isAudioMimeType(mimeType) {
+    return mimeType && mimeType.startsWith('audio/');
+}
+
+async function setupAudioPlayback(mimeType) {
+    const audioPlayer = document.getElementById('audioPlayer');
+    audioPlayer.style.display = 'block';
+    
+    try {
+        // Initialize AudioContext
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        return true;
+    } catch (e) {
+        console.error('Error setting up audio context:', e);
+        return false;
+    }
+}
+
+async function playAudioFromBuffer(arrayBuffer) {
+    try {
+        const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+        const source = audioContext.createBufferSource();
+        source.buffer = audioBuffer;
+        source.connect(audioContext.destination);
+        source.start(0);
+    } catch (e) {
+        console.error('Error playing audio:', e);
+    }
+}
+
+async function setupMediaSource(mimeType) {
+    const audioPlayer = document.getElementById('audioPlayer');
+    mediaSource = new MediaSource();
+    audioPlayer.src = URL.createObjectURL(mediaSource);
+    
+    return new Promise((resolve) => {
+        mediaSource.addEventListener('sourceopen', () => {
+            try {
+                sourceBuffer = mediaSource.addSourceBuffer(mimeType);
+                sourceBuffer.mode = 'segments';
+                sourceBuffer.addEventListener('updateend', processAudioQueue);
+                resolve();
+            } catch (e) {
+                console.error('Error setting up MediaSource:', e);
+                resolve();
+            }
+        });
+    });
+}
+
+function processAudioQueue() {
+    if (!sourceBuffer || sourceBuffer.updating || audioQueue.length === 0) return;
+    
+    const chunk = audioQueue.shift();
+    try {
+        sourceBuffer.appendBuffer(chunk);
+    } catch (e) {
+        console.error('Error appending buffer:', e);
+    }
+}
 
 function joinRoom() {
     const roomId = document.getElementById('roomId').value;
     if (!roomId) return;
-
+    
     currentRoom = roomId;
     ws = new WebSocket(`wss://${window.location.host}/ws`);
-
+    
     ws.onopen = () => {
         ws.send(JSON.stringify({
             event: 'join',
             data: { peerId },
             room: roomId
         }));
-        log('Connected to WebSocket server');
         updateStatus('Joined room: ' + roomId);
     };
 
     ws.onmessage = async (event) => {
         const message = JSON.parse(event.data);
-        log('Received message: ' + message.event);
         
         switch (message.event) {
             case 'peer-joined':
@@ -71,15 +127,12 @@ function joinRoom() {
                 updateStatus('Peer joined: ' + remotePeerId);
                 await initiatePeerConnection();
                 break;
-
             case 'offer':
                 await handleOffer(message);
                 break;
-
             case 'answer':
                 await handleAnswer(message);
                 break;
-
             case 'ice-candidate':
                 await handleICECandidate(message);
                 break;
@@ -88,7 +141,6 @@ function joinRoom() {
 }
 
 async function initiatePeerConnection() {
-    log('Initiating peer connection');
     createPeerConnection();
     createDataChannel();
     const offer = await peerConnection.createOffer();
@@ -105,7 +157,6 @@ async function initiatePeerConnection() {
 }
 
 function createPeerConnection() {
-    log(config.iceServers[3])
     peerConnection = new RTCPeerConnection(config);
     
     peerConnection.onicecandidate = (event) => {
@@ -122,125 +173,114 @@ function createPeerConnection() {
         }
     };
 
-    peerConnection.onconnectionstatechange = () => {
-        log('Connection state: ' + peerConnection.connectionState);
-    };
-
     peerConnection.ondatachannel = (event) => {
-        log('Received data channel');
         dataChannel = event.channel;
         setupDataChannel(dataChannel);
     };
 }
 
 function createDataChannel() {
-    try {
-        dataChannel = peerConnection.createDataChannel('fileTransfer', {
-            ordered: true
-        });
-        log('Created data channel');
-        setupDataChannel(dataChannel);
-    } catch (e) {
-        log('Error creating data channel: ' + e.message);
-    }
+    dataChannel = peerConnection.createDataChannel('fileTransfer', {
+        ordered: true
+    });
+    setupDataChannel(dataChannel);
 }
 
 function setupDataChannel(channel) {
     channel.binaryType = 'arraybuffer';
     
     channel.onopen = () => {
-        log('Data channel is open');
         updateStatus('Connection established - ready to transfer files');
     };
 
     channel.onclose = () => {
-        log('Data channel closed');
         updateStatus('Connection closed');
     };
 
-    channel.onerror = (error) => {
-        log('Data channel error: ' + error);
-    };
-
     channel.onmessage = async (event) => {
-        try {
-            if (typeof event.data === 'string') {
+        if (typeof event.data === 'string') {
+            try {
                 const metadata = JSON.parse(event.data);
-                log('Received file metadata: ' + JSON.stringify(metadata));
                 file = metadata;
+                isAudioFile = isAudioMimeType(metadata.mimeType);
+                
+                if (isAudioFile) {
+                    document.getElementById('audioControls').style.display = 'block';
+                    await setupAudioPlayback(metadata.mimeType);
+                }
+                
                 updateStatus(`Receiving ${metadata.fileName} (${metadata.fileSize} bytes)`);
                 receivedSize = 0;
                 receivedData = [];
                 document.getElementById('progress').style.display = 'block';
-            } else {
+            } catch (e) {
+                console.error('Error processing metadata:', e);
+            }
+        } else {
+            try {
                 receivedData.push(event.data);
                 receivedSize += event.data.byteLength;
                 
-                const progress = document.getElementById('progress');
-                progress.value = (receivedSize / file.fileSize) * 100;
-                
-                if (receivedSize === file.fileSize) {
-                    const blob = new Blob(receivedData);
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = file.fileName;
-                    a.click();
-                    URL.revokeObjectURL(url);
-                    updateStatus('File received and downloaded');
-                    progress.style.display = 'none';
-                    log('File transfer completed');
+                if (file && file.fileSize) {  // Check if file metadata exists
+                    const progress = document.getElementById('progress');
+                    progress.value = (receivedSize / file.fileSize) * 100;
+
+                    if (receivedSize === file.fileSize) {
+                        const blob = new Blob(receivedData);
+                        
+                        if (isAudioFile) {
+                            const arrayBuffer = await blob.arrayBuffer();
+                            await playAudioFromBuffer(arrayBuffer);
+                        } else {
+                            const url = URL.createObjectURL(blob);
+                            const a = document.createElement('a');
+                            a.href = url;
+                            a.download = file.fileName;
+                            a.click();
+                            URL.revokeObjectURL(url);
+                        }
+                        
+                        updateStatus('File transfer completed');
+                        progress.style.display = 'none';
+                        receivedData = [];
+                        receivedSize = 0;
+                    }
                 }
+            } catch (e) {
+                console.error('Error processing file chunk:', e);
             }
-        } catch (e) {
-            log('Error handling message: ' + e.message);
         }
     };
 }
 
 async function handleOffer(message) {
-    log('Handling offer');
     remotePeerId = message.data.peerId;
     if (!peerConnection) {
         createPeerConnection();
     }
     
-    try {
-        await peerConnection.setRemoteDescription(new RTCSessionDescription(message.data.offer));
-        const answer = await peerConnection.createAnswer();
-        await peerConnection.setLocalDescription(answer);
-        
-        ws.send(JSON.stringify({
-            event: 'answer',
-            data: {
-                answer,
-                target: remotePeerId,
-                peerId: peerId
-            },
-            room: currentRoom
-        }));
-    } catch (e) {
-        log('Error handling offer: ' + e.message);
-    }
+    await peerConnection.setRemoteDescription(new RTCSessionDescription(message.data.offer));
+    const answer = await peerConnection.createAnswer();
+    await peerConnection.setLocalDescription(answer);
+    
+    ws.send(JSON.stringify({
+        event: 'answer',
+        data: {
+            answer,
+            target: remotePeerId,
+            peerId: peerId
+        },
+        room: currentRoom
+    }));
 }
 
 async function handleAnswer(message) {
-    log('Handling answer');
-    try {
-        await peerConnection.setRemoteDescription(new RTCSessionDescription(message.data.answer));
-    } catch (e) {
-        log('Error handling answer: ' + e.message);
-    }
+    await peerConnection.setRemoteDescription(new RTCSessionDescription(message.data.answer));
 }
 
 async function handleICECandidate(message) {
     if (message.data.candidate) {
-        try {
-            await peerConnection.addIceCandidate(new RTCIceCandidate(message.data.candidate));
-            log('Added ICE candidate');
-        } catch (e) {
-            log('Error adding ICE candidate: ' + e.message);
-        }
+        await peerConnection.addIceCandidate(new RTCIceCandidate(message.data.candidate));
     }
 }
 
@@ -248,28 +288,20 @@ document.getElementById('fileInput').addEventListener('change', (event) => {
     file = event.target.files[0];
     if (file) {
         updateStatus(`Selected file: ${file.name}`);
-        log('File selected: ' + file.name);
     }
 });
 
 async function sendFile() {
-    if (!file) {
-        log('No file selected');
-        return;
-    }
-    if (!dataChannel) {
-        log('No data channel available');
-        return;
-    }
+    if (!file || !dataChannel) return;
     if (dataChannel.readyState !== 'open') {
-        log('Data channel is not open. Current state: ' + dataChannel.readyState);
+        updateStatus('Connection not ready. Please wait...');
         return;
     }
-    
-    log('Starting file transfer');
+
     const metadata = {
         fileName: file.name,
-        fileSize: file.size
+        fileSize: file.size,
+        mimeType: file.type || 'application/octet-stream'
     };
     dataChannel.send(JSON.stringify(metadata));
     
@@ -290,7 +322,6 @@ async function sendFile() {
         } else {
             updateStatus('File sent successfully');
             progress.style.display = 'none';
-            log('File transfer completed');
         }
     });
     
@@ -305,5 +336,5 @@ async function sendFile() {
 function updateStatus(message) {
     const status = document.getElementById('status');
     status.textContent = message;
-    log(message);
+    console.log(message);
 }
