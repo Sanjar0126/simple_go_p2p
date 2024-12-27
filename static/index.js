@@ -12,6 +12,11 @@ let sourceBuffer;
 let audioQueue = [];
 let isAudioFile = false;
 
+// Buffer size for streaming (adjust based on needs)
+const BUFFER_SIZE = 128 * 1024; // 128KB chunks
+let streamBuffer = [];
+let isPlaying = false;
+
 const config = {
     iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
