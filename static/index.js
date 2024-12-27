@@ -15,6 +15,7 @@ let isAudioFile = false;
 const BUFFER_SIZE = 128 * 1024; // 128KB chunks
 let streamBuffer = [];
 let isPlaying = false;
+let nextStartTime = 0;
 
 const config = {
     iceServers: [
@@ -47,6 +48,45 @@ const config = {
 
 function isAudioMimeType(mimeType) {
     return mimeType && mimeType.startsWith('audio/');
+}
+
+async function setupAudioContext() {
+    try {
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        return true;
+    } catch (e) {
+        console.error('Error setting up audio context:', e);
+        return false;
+    }
+}
+
+async function playAudioChunk(arrayBuffer) {
+    try {
+        const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+        const source = audioContext.createBufferSource();
+        source.buffer = audioBuffer;
+        source.connect(audioContext.destination);
+        
+        if (nextStartTime < audioContext.currentTime) {
+            nextStartTime = audioContext.currentTime;
+        }
+        
+        source.start(nextStartTime);
+        nextStartTime += audioBuffer.duration;
+        
+        // Clean up when playback ends
+        source.onended = () => {
+            source.disconnect();
+        };
+        
+        if (currentSource) {
+            currentSource.disconnect();
+        }
+        currentSource = source;
+        
+    } catch (e) {
+        console.error('Error playing audio chunk:', e);
+    }
 }
 
 async function setupAudioStreaming() {
@@ -258,6 +298,9 @@ function setupDataChannel(channel) {
 
     channel.onclose = () => {
         updateStatus('Connection closed');
+        if (currentSource) {
+            currentSource.disconnect();
+        }
     };
 
     channel.onmessage = async (event) => {
@@ -269,19 +312,21 @@ function setupDataChannel(channel) {
                 
                 if (isAudioFile) {
                     document.getElementById('audioControls').style.display = 'block';
-                    await setupAudioStreaming();
-                    isPlaying = false;
+                    await setupAudioContext();
+                    nextStartTime = 0;
                     streamBuffer = [];
                 }
                 
                 updateStatus(`Receiving ${metadata.fileName} (${metadata.fileSize} bytes)`);
                 receivedSize = 0;
+                receivedData = [];
                 document.getElementById('progress').style.display = 'block';
             } catch (e) {
                 console.error('Error processing metadata:', e);
             }
         } else {
             try {
+                receivedData.push(event.data);
                 receivedSize += event.data.byteLength;
                 
                 if (file && file.fileSize) {
@@ -289,16 +334,27 @@ function setupDataChannel(channel) {
                     progress.value = (receivedSize / file.fileSize) * 100;
 
                     if (isAudioFile) {
-                        // Process audio chunk immediately for streaming
-                        await processAudioChunk(event.data);
-                    } else {
-                        // For non-audio files, collect chunks for download
-                        receivedData.push(event.data);
+                        // Concatenate received chunks until we have enough for a playable segment
+                        streamBuffer.push(event.data);
+                        const totalBufferSize = streamBuffer.reduce((sum, chunk) => sum + chunk.byteLength, 0);
+                        
+                        if (totalBufferSize >= BUFFER_SIZE || receivedSize === file.fileSize) {
+                            // Combine chunks into a single buffer
+                            const completeBuffer = new Uint8Array(totalBufferSize);
+                            let offset = 0;
+                            streamBuffer.forEach(chunk => {
+                                completeBuffer.set(new Uint8Array(chunk), offset);
+                                offset += chunk.byteLength;
+                            });
+                            
+                            // Play the combined buffer
+                            await playAudioChunk(completeBuffer.buffer);
+                            streamBuffer = []; // Clear the buffer after playing
+                        }
                     }
 
                     if (receivedSize === file.fileSize) {
                         if (!isAudioFile) {
-                            // Handle non-audio file download
                             const blob = new Blob(receivedData);
                             const url = URL.createObjectURL(blob);
                             const a = document.createElement('a');
@@ -306,16 +362,11 @@ function setupDataChannel(channel) {
                             a.download = file.fileName;
                             a.click();
                             URL.revokeObjectURL(url);
-                            receivedData = [];
-                        }
-                        
-                        // Handle end of stream for audio
-                        if (isAudioFile && mediaSource.readyState === 'open') {
-                            mediaSource.endOfStream();
                         }
                         
                         updateStatus('File transfer completed');
                         progress.style.display = 'none';
+                        receivedData = [];
                         receivedSize = 0;
                     }
                 }
@@ -378,7 +429,7 @@ async function sendFile() {
     };
     dataChannel.send(JSON.stringify(metadata));
     
-    const chunkSize = BUFFER_SIZE; // Use streaming buffer size
+    const chunkSize = BUFFER_SIZE / 2; // Smaller chunks for better streaming
     const fileReader = new FileReader();
     let offset = 0;
     
