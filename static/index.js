@@ -49,6 +49,65 @@ function isAudioMimeType(mimeType) {
     return mimeType && mimeType.startsWith('audio/');
 }
 
+async function setupAudioStreaming() {
+    try {
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        mediaSource = new MediaSource();
+        audioPlayer = document.getElementById('audioPlayer');
+        audioPlayer.src = URL.createObjectURL(mediaSource);
+        
+        return new Promise((resolve) => {
+            mediaSource.addEventListener('sourceopen', () => {
+                try {
+                    // Use audio/mpeg for MP3 or audio/aac for AAC
+                    sourceBuffer = mediaSource.addSourceBuffer('audio/mpeg');
+                    sourceBuffer.mode = 'sequence';
+                    resolve(true);
+                } catch (e) {
+                    console.error('Error setting up source buffer:', e);
+                    resolve(false);
+                }
+            });
+        });
+    } catch (e) {
+        console.error('Error setting up audio streaming:', e);
+        return false;
+    }
+}
+
+async function processAudioChunk(chunk) {
+    if (!sourceBuffer || mediaSource.readyState !== 'open') return;
+
+    try {
+        // Wait if the sourceBuffer is still updating
+        if (sourceBuffer.updating) {
+            await new Promise(resolve => {
+                sourceBuffer.addEventListener('updateend', resolve, { once: true });
+            });
+        }
+
+        // Append the chunk to the sourceBuffer
+        sourceBuffer.appendBuffer(chunk);
+
+        // Start playing if not already playing
+        if (!isPlaying && audioPlayer.paused) {
+            isPlaying = true;
+            try {
+                await audioPlayer.play();
+            } catch (e) {
+                console.error('Autoplay failed:', e);
+                // Add a play button as fallback
+                const playButton = document.createElement('button');
+                playButton.textContent = 'Play Audio';
+                playButton.onclick = () => audioPlayer.play();
+                document.getElementById('audioControls').appendChild(playButton);
+            }
+        }
+    } catch (e) {
+        console.error('Error processing audio chunk:', e);
+    }
+}
+
 async function setupAudioPlayback(mimeType) {
     const audioPlayer = document.getElementById('audioPlayer');
     audioPlayer.style.display = 'block';
@@ -210,48 +269,58 @@ function setupDataChannel(channel) {
                 
                 if (isAudioFile) {
                     document.getElementById('audioControls').style.display = 'block';
-                    await setupAudioPlayback(metadata.mimeType);
+                    await setupAudioStreaming();
+                    isPlaying = false;
+                    streamBuffer = [];
                 }
                 
                 updateStatus(`Receiving ${metadata.fileName} (${metadata.fileSize} bytes)`);
                 receivedSize = 0;
-                receivedData = [];
                 document.getElementById('progress').style.display = 'block';
             } catch (e) {
                 console.error('Error processing metadata:', e);
             }
         } else {
             try {
-                receivedData.push(event.data);
                 receivedSize += event.data.byteLength;
                 
-                if (file && file.fileSize) {  // Check if file metadata exists
+                if (file && file.fileSize) {
                     const progress = document.getElementById('progress');
                     progress.value = (receivedSize / file.fileSize) * 100;
 
+                    if (isAudioFile) {
+                        // Process audio chunk immediately for streaming
+                        await processAudioChunk(event.data);
+                    } else {
+                        // For non-audio files, collect chunks for download
+                        receivedData.push(event.data);
+                    }
+
                     if (receivedSize === file.fileSize) {
-                        const blob = new Blob(receivedData);
-                        
-                        if (isAudioFile) {
-                            const arrayBuffer = await blob.arrayBuffer();
-                            await playAudioFromBuffer(arrayBuffer);
-                        } else {
+                        if (!isAudioFile) {
+                            // Handle non-audio file download
+                            const blob = new Blob(receivedData);
                             const url = URL.createObjectURL(blob);
                             const a = document.createElement('a');
                             a.href = url;
                             a.download = file.fileName;
                             a.click();
                             URL.revokeObjectURL(url);
+                            receivedData = [];
+                        }
+                        
+                        // Handle end of stream for audio
+                        if (isAudioFile && mediaSource.readyState === 'open') {
+                            mediaSource.endOfStream();
                         }
                         
                         updateStatus('File transfer completed');
                         progress.style.display = 'none';
-                        receivedData = [];
                         receivedSize = 0;
                     }
                 }
             } catch (e) {
-                console.error('Error processing file chunk:', e);
+                console.error('Error processing chunk:', e);
             }
         }
     };
@@ -309,7 +378,7 @@ async function sendFile() {
     };
     dataChannel.send(JSON.stringify(metadata));
     
-    const chunkSize = 16384;
+    const chunkSize = BUFFER_SIZE; // Use streaming buffer size
     const fileReader = new FileReader();
     let offset = 0;
     
