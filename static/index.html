@@ -55,6 +55,12 @@
         <audio id="audioPlayer" controls></audio>
     </div>
 
+    <div id="callControls" style="margin-top: 20px;">
+        <button onclick="startCall()" class="button" id="startCallButton">Start Call</button>
+        <button onclick="endCall()" class="button" id="endCallButton" style="display: none;">End Call</button>
+        <button onclick="toggleMute()" class="button" id="muteButton" style="display: none;">Mute</button>
+    </div>
+
     <script src="env.js"></script>
     <script src="index.js"></script>
 </body>
