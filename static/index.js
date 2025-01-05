@@ -10,12 +10,12 @@ let remotePeerId = null;
 let isAudioFile = false;
 
 let audioContext;
-let currentSource;
-let audioWorklet;
-let pendingChunks = [];
 const BUFFER_SIZE = 128 * 1024; // 128KB chunks
-let streamBuffer = [];
-let nextStartTime = 0;
+
+let localStream;
+let remoteStream;
+let remoteAudio;
+let isCallActive = false;
 
 const config = {
     iceServers: [
@@ -99,16 +99,26 @@ function joinRoom() {
             case 'peer-joined':
                 remotePeerId = message.data.peerId;
                 updateStatus('Peer joined: ' + remotePeerId);
-                await initiatePeerConnection();
+                if (!peerConnection) {
+                    createPeerConnection();
+                }
                 break;
             case 'offer':
                 await handleOffer(message);
                 break;
             case 'answer':
-                await handleAnswer(message);
+                if (peerConnection) {
+                    await peerConnection.setRemoteDescription(
+                        new RTCSessionDescription(message.data.answer)
+                    );
+                }
                 break;
             case 'ice-candidate':
-                await handleICECandidate(message);
+                if (peerConnection) {
+                    await peerConnection.addIceCandidate(
+                        new RTCIceCandidate(message.data.candidate)
+                    );
+                }
                 break;
         }
     };
@@ -147,10 +157,36 @@ function createPeerConnection() {
         }
     };
 
-    peerConnection.ondatachannel = (event) => {
-        dataChannel = event.channel;
-        setupDataChannel(dataChannel);
+    peerConnection.ontrack = (event) => {
+        console.log('Got remote track:', event.streams[0]);
+        if (!remoteAudio) {
+            remoteAudio = new Audio();
+            remoteAudio.volume = 1.0;
+        }
+        remoteAudio.srcObject = event.streams[0];
+        
+        // Force play the audio
+        const playPromise = remoteAudio.play();
+        if (playPromise !== undefined) {
+            playPromise.catch(error => {
+                console.log('Autoplay prevented. Please click to enable audio.');
+                document.addEventListener('click', () => {
+                    remoteAudio.play();
+                }, { once: true });
+            });
+        }
     };
+
+    // Add connection monitoring
+    peerConnection.oniceconnectionstatechange = () => {
+        console.log('ICE Connection State:', peerConnection.iceConnectionState);
+    };
+    
+    peerConnection.onconnectionstatechange = () => {
+        console.log('Connection State:', peerConnection.connectionState);
+    };
+
+    return peerConnection;
 }
 
 function createDataChannel() {
@@ -228,24 +264,49 @@ function setupDataChannel(channel) {
 }
 
 async function handleOffer(message) {
-    remotePeerId = message.data.peerId;
-    if (!peerConnection) {
-        createPeerConnection();
+    try {
+        if (!peerConnection) {
+            createPeerConnection();
+        }
+
+        const offer = message.data.offer;
+        await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+
+        // Get user media if not already obtained
+        if (!localStream) {
+            localStream = await navigator.mediaDevices.getUserMedia({
+                audio: {
+                    echoCancellation: true,
+                    noiseSuppression: true,
+                    autoGainControl: true
+                }
+            });
+
+            localStream.getTracks().forEach(track => {
+                peerConnection.addTrack(track, localStream);
+            });
+        }
+
+        // Create and send answer
+        const answer = await peerConnection.createAnswer();
+        await peerConnection.setLocalDescription(answer);
+
+        ws.send(JSON.stringify({
+            event: 'answer',
+            data: {
+                answer,
+                target: message.data.peerId,
+                peerId: peerId
+            },
+            room: currentRoom
+        }));
+
+        updateStatus('Connected to call');
+
+    } catch (error) {
+        console.error('Error handling offer:', error);
+        updateStatus('Failed to handle offer: ' + error.message);
     }
-    
-    await peerConnection.setRemoteDescription(new RTCSessionDescription(message.data.offer));
-    const answer = await peerConnection.createAnswer();
-    await peerConnection.setLocalDescription(answer);
-    
-    ws.send(JSON.stringify({
-        event: 'answer',
-        data: {
-            answer,
-            target: remotePeerId,
-            peerId: peerId
-        },
-        room: currentRoom
-    }));
 }
 
 async function handleAnswer(message) {
@@ -312,3 +373,4 @@ function updateStatus(message) {
     status.textContent = message;
     console.log(message);
 }
+
