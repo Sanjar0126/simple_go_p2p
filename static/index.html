@@ -60,6 +60,38 @@
         <button onclick="endCall()" class="button">End Call</button>
     </div>
 
+    <div id="groupCallControls">
+        <div id="participantsList"></div>
+        <div id="remoteAudios"></div>
+        <button onclick="leaveRoom()" class="button">Leave Room</button>
+    </div>
+    
+    <style>
+        #groupCallControls {
+            margin-top: 20px;
+            padding: 15px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        
+        #participantsList {
+            margin-bottom: 15px;
+        }
+        
+        #remoteAudios {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        
+        .participant {
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            margin-bottom: 10px;
+        }
+    </style>
+
     <script src="config.js"></script>
     <script src="call.js"></script>
     <script src="index.js"></script>
