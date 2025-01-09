@@ -55,14 +55,8 @@
         <audio id="audioPlayer" controls></audio>
     </div>
 
-    <div id="callControls" style="margin-top: 20px;">
-        <button onclick="startCall()" class="button">Start Call</button>
-        <button onclick="endCall()" class="button">End Call</button>
-    </div>
-
     <div id="groupCallControls">
         <div id="participantsList"></div>
-        <div id="remoteAudios"></div>
         <button onclick="leaveRoom()" class="button">Leave Room</button>
     </div>
     
@@ -76,12 +70,6 @@
         
         #participantsList {
             margin-bottom: 15px;
-        }
-        
-        #remoteAudios {
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
         }
         
         .participant {
