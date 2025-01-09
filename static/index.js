@@ -17,6 +17,10 @@ let remoteStream;
 let remoteAudio;
 let isCallActive = false;
 
+let peerConnections = {};
+let remoteStreams = {};
+let peers = new Set();
+
 const config = {
     iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
@@ -76,7 +80,7 @@ async function playAudioFromBuffer(arrayBuffer) {
     }
 }
 
-function joinRoom() {
+async function joinRoom() {
     const roomId = document.getElementById('roomId').value;
     if (!roomId) return;
     
@@ -96,32 +100,65 @@ function joinRoom() {
         const message = JSON.parse(event.data);
         
         switch (message.event) {
-            case 'peer-joined':
-                remotePeerId = message.data.peerId;
-                updateStatus('Peer joined: ' + remotePeerId);
-                if (!peerConnection) {
-                    createPeerConnection();
+            case 'peers-in-room':
+                const existingPeers = message.data.peers;
+                for (const existingPeer of existingPeers) {
+                    if (existingPeer !== peerId) {
+                        await createPeerConnection(existingPeer);
+                        createOffer(existingPeer);
+                    }
                 }
                 break;
+
+            case 'peer-joined':
+                const newPeerId = message.data.peerId;
+                if (newPeerId !== peerId) {
+                    peers.add(newPeerId);
+                    updateParticipantsList();
+                }
+                break;
+
+            case 'peer-left':
+                const leftPeerId = message.data.peerId;
+                handlePeerLeft(leftPeerId);
+                break;
+
             case 'offer':
                 await handleOffer(message);
                 break;
+
             case 'answer':
-                if (peerConnection) {
-                    await peerConnection.setRemoteDescription(
-                        new RTCSessionDescription(message.data.answer)
-                    );
-                }
+                await handleAnswer(message);
                 break;
+
             case 'ice-candidate':
-                if (peerConnection) {
-                    await peerConnection.addIceCandidate(
-                        new RTCIceCandidate(message.data.candidate)
-                    );
-                }
+                await handleICECandidate(message);
                 break;
         }
     };
+
+    ws.onclose = () => {
+        handleDisconnection();
+    };
+
+    try {
+        localStream = await navigator.mediaDevices.getUserMedia({
+            audio: {
+                echoCancellation: true,
+                noiseSuppression: true,
+                autoGainControl: true
+            }
+        });
+        
+        //local audio preview
+        const localAudio = new Audio();
+        localAudio.muted = true;
+        localAudio.srcObject = localStream;
+        localAudio.play();
+    } catch (err) {
+        console.error('Error accessing microphone:', err);
+        updateStatus('Error accessing microphone. Please check permissions.');
+    }
 }
 
 async function initiatePeerConnection() {
@@ -140,16 +177,28 @@ async function initiatePeerConnection() {
     }));
 }
 
-function createPeerConnection() {
-    peerConnection = new RTCPeerConnection(config);
-    
+async function createPeerConnection(targetPeerId) {
+    if (peerConnections[targetPeerId]) {
+        console.log('Peer connection already exists for:', targetPeerId);
+        return peerConnections[targetPeerId];
+    }
+
+    const peerConnection = new RTCPeerConnection(config);
+    peerConnections[targetPeerId] = peerConnection;
+
+    if (localStream) {
+        localStream.getTracks().forEach(track => {
+            peerConnection.addTrack(track, localStream);
+        });
+    }
+
     peerConnection.onicecandidate = (event) => {
         if (event.candidate) {
             ws.send(JSON.stringify({
                 event: 'ice-candidate',
                 data: {
                     candidate: event.candidate,
-                    target: remotePeerId,
+                    target: targetPeerId,
                     peerId: peerId
                 },
                 room: currentRoom
@@ -158,35 +207,72 @@ function createPeerConnection() {
     };
 
     peerConnection.ontrack = (event) => {
-        console.log('Got remote track:', event.streams[0]);
-        if (!remoteAudio) {
-            remoteAudio = new Audio();
-            remoteAudio.volume = 1.0;
+        console.log('Got remote track from:', targetPeerId);
+        if (!remoteStreams[targetPeerId]) {
+            remoteStreams[targetPeerId] = new MediaStream();
+            createAudioElement(targetPeerId);
         }
-        remoteAudio.srcObject = event.streams[0];
-        
-        // Force play the audio
-        const playPromise = remoteAudio.play();
-        if (playPromise !== undefined) {
-            playPromise.catch(error => {
-                console.log('Autoplay prevented. Please click to enable audio.');
-                document.addEventListener('click', () => {
-                    remoteAudio.play();
-                }, { once: true });
-            });
-        }
+        event.streams[0].getTracks().forEach(track => {
+            remoteStreams[targetPeerId].addTrack(track);
+        });
     };
 
-    // Add connection monitoring
     peerConnection.oniceconnectionstatechange = () => {
-        console.log('ICE Connection State:', peerConnection.iceConnectionState);
-    };
-    
-    peerConnection.onconnectionstatechange = () => {
-        console.log('Connection State:', peerConnection.connectionState);
+        console.log(`ICE Connection State with ${targetPeerId}:`, 
+                    peerConnection.iceConnectionState);
+        if (peerConnection.iceConnectionState === 'disconnected') {
+            handlePeerLeft(targetPeerId);
+        }
     };
 
     return peerConnection;
+}
+
+async function createOffer(targetPeerId) {
+    const peerConnection = await createPeerConnection(targetPeerId);
+    
+    try {
+        const offer = await peerConnection.createOffer();
+        await peerConnection.setLocalDescription(offer);
+        
+        ws.send(JSON.stringify({
+            event: 'offer',
+            data: {
+                offer,
+                target: targetPeerId,
+                peerId: peerId
+            },
+            room: currentRoom
+        }));
+    } catch (error) {
+        console.error('Error creating offer:', error);
+    }
+}
+
+
+function createAudioElement(peerId) {
+    const audioElement = new Audio();
+    audioElement.id = `audio-${peerId}`;
+    audioElement.autoplay = true;
+    audioElement.controls = true;
+    audioElement.srcObject = remoteStreams[peerId];
+    
+    const participantDiv = document.createElement('div');
+    participantDiv.id = `participant-${peerId}`;
+    participantDiv.className = 'participant';
+    
+    const label = document.createElement('div');
+    label.textContent = `Participant ${peerId}`;
+    
+    participantDiv.appendChild(label);
+    participantDiv.appendChild(audioElement);
+
+    audioElement.play().catch(error => {
+        console.log('Autoplay prevented. Click to enable audio.');
+        document.addEventListener('click', () => {
+            audioElement.play();
+        }, { once: true });
+    });
 }
 
 function createDataChannel() {
@@ -264,59 +350,161 @@ function setupDataChannel(channel) {
 }
 
 async function handleOffer(message) {
+    const offerPeerId = message.data.peerId;
+    
     try {
-        if (!peerConnection) {
-            createPeerConnection();
-        }
-
-        const offer = message.data.offer;
-        await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
-
-        // Get user media if not already obtained
-        if (!localStream) {
-            localStream = await navigator.mediaDevices.getUserMedia({
-                audio: {
-                    echoCancellation: true,
-                    noiseSuppression: true,
-                    autoGainControl: true
-                }
-            });
-
-            localStream.getTracks().forEach(track => {
-                peerConnection.addTrack(track, localStream);
-            });
-        }
-
-        // Create and send answer
+        const peerConnection = await createPeerConnection(offerPeerId);
+        await peerConnection.setRemoteDescription(new RTCSessionDescription(message.data.offer));
+        
         const answer = await peerConnection.createAnswer();
         await peerConnection.setLocalDescription(answer);
-
+        
         ws.send(JSON.stringify({
             event: 'answer',
             data: {
                 answer,
-                target: message.data.peerId,
+                target: offerPeerId,
                 peerId: peerId
             },
             room: currentRoom
         }));
-
-        updateStatus('Connected to call');
-
     } catch (error) {
         console.error('Error handling offer:', error);
-        updateStatus('Failed to handle offer: ' + error.message);
     }
 }
 
 async function handleAnswer(message) {
-    await peerConnection.setRemoteDescription(new RTCSessionDescription(message.data.answer));
+    const answerPeerId = message.data.peerId;
+    const peerConnection = peerConnections[answerPeerId];
+    
+    if (peerConnection) {
+        try {
+            await peerConnection.setRemoteDescription(
+                new RTCSessionDescription(message.data.answer)
+            );
+        } catch (error) {
+            console.error('Error handling answer:', error);
+        }
+    }
 }
 
+
 async function handleICECandidate(message) {
-    if (message.data.candidate) {
-        await peerConnection.addIceCandidate(new RTCIceCandidate(message.data.candidate));
+    const candidatePeerId = message.data.peerId;
+    const peerConnection = peerConnections[candidatePeerId];
+    
+    if (peerConnection) {
+        try {
+            await peerConnection.addIceCandidate(
+                new RTCIceCandidate(message.data.candidate)
+            );
+        } catch (error) {
+            console.error('Error handling ICE candidate:', error);
+        }
     }
+}
+
+function handlePeerLeft(peerId) {
+    if (peerConnections[peerId]) {
+        peerConnections[peerId].close();
+        delete peerConnections[peerId];
+    }
+
+    if (remoteStreams[peerId]) {
+        delete remoteStreams[peerId];
+    }
+
+    const participantDiv = document.getElementById(`participant-${peerId}`);
+    if (participantDiv) {
+        participantDiv.remove();
+    }
+
+    peers.delete(peerId);
+    updateParticipantsList();
+    updateStatus(`Peer ${peerId} left the room`);
+}
+
+function handleDisconnection() {
+    if (localStream) {
+        localStream.getTracks().forEach(track => track.stop());
+        localStream = null;
+    }
+
+    Object.keys(peerConnections).forEach(peerId => {
+        if (peerConnections[peerId]) {
+            peerConnections[peerId].close();
+            delete peerConnections[peerId];
+        }
+    });
+
+    Object.keys(remoteStreams).forEach(peerId => {
+        delete remoteStreams[peerId];
+    });
+
+    if (ws) {
+        ws.close();
+        ws = null;
+    }
+
+    peers.clear();
+    currentRoom = null;
+    updateParticipantsList();
+    updateStatus('Disconnected from room');
+}
+
+function updateParticipantsList() {
+    const participantsList = document.getElementById('participantsList');
+    participantsList.innerHTML = '';
+    
+    const title = document.createElement('h3');
+    title.textContent = `Participants (${peers.size + 1})`;
+    participantsList.appendChild(title);
+    
+    const list = document.createElement('ul');
+    list.appendChild(createParticipantItem(peerId + ' (You)'));
+    peers.forEach(peer => {
+        list.appendChild(createParticipantItem(peer));
+    });
+    
+    participantsList.appendChild(list);
+}
+
+function createParticipantItem(text) {
+    const li = document.createElement('li');
+    li.textContent = text;
+    return li;
+}
+
+function leaveRoom() {
+    if (localStream) {
+        localStream.getTracks().forEach(track => track.stop());
+        localStream = null;
+    }
+
+    Object.keys(peerConnections).forEach(peerId => {
+        peerConnections[peerId].close();
+        delete peerConnections[peerId];
+    });
+
+    remoteStreams = {};
+
+    if (ws) {
+        ws.close();
+    }
+
+    peers.clear();
+    updateParticipantsList();
+    updateStatus('Left the room');
+
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+            event: 'disconnect',
+            data: { peerId },
+            room: currentRoom
+        }));
+    }
+
+    handleDisconnection();
 }
 
 document.getElementById('fileInput').addEventListener('change', (event) => {
@@ -374,3 +562,13 @@ function updateStatus(message) {
     console.log(message);
 }
 
+window.addEventListener('beforeunload', () => {
+    if (ws && currentRoom) {
+        ws.send(JSON.stringify({
+            event: 'disconnect',
+            data: { peerId },
+            room: currentRoom
+        }));
+    }
+    handleDisconnection();
+});
