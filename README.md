@@ -18,6 +18,8 @@ Join same rooms. Select file and send, or start call from both sides.
    - ❌ Handle dropped connections gracefully:
       - ❌ Reconnect logic if WebSocket or peer connection fails.
       - ⚠️ (partially) Notify users of connection status changes.
+2. Turn Server Integration:
+   - ⚠️ Implement a TURN server for better connectivity in restricted networks
 ## Security and Scalability:
 1. Encryption:
    - ❌ Secure WebSocket communication with user authentication.
