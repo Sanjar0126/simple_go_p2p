@@ -192,6 +192,7 @@ func handleDisconnect(msg Message) {
 
 	room.mu.Lock()
 	delete(room.Peers, peerId)
+	delete(room.Names, peerId)
 
 	// if room is empty, remove room from list
 	if len(room.Peers) == 0 {
