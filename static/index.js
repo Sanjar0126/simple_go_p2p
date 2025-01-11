@@ -17,19 +17,25 @@ let peerConnections = {};
 let remoteStreams = {};
 let peers = new Set();
 
+let peerName = '';
+const peerNames = new Map();
 
 function updateParticipantsList() {
     const participantsList = document.getElementById('participantsList');
     participantsList.innerHTML = '';
     
     const title = document.createElement('h3');
-    title.textContent = `Participants (${peers.size + 1})`;
+    title.textContent = `Participants (${peers.size})`;
     participantsList.appendChild(title);
     
     const list = document.createElement('ul');
-    list.appendChild(createParticipantItem(peerId + ' (You)'));
+    
+    list.appendChild(createParticipantItem(peerId, true));
+    
     peers.forEach(peer => {
-        list.appendChild(createParticipantItem(peer));
+        if (peer !== peerId) {
+            list.appendChild(createParticipantItem(peer));
+        }
     });
     
     participantsList.appendChild(list);
@@ -37,24 +43,35 @@ function updateParticipantsList() {
 
 function createParticipantItem(text) {
     const li = document.createElement('li');
-    li.textContent = text;
+    const displayName = isCurrentUser ? 
+        (peerName || peerId + ' (You)') : 
+        (peerNames.get(peerId) || peerId);
+    li.textContent = isCurrentUser ? displayName + ' (You)' : displayName;
     return li;
 }
 
 async function joinRoom() {
     const roomId = document.getElementById('roomId').value;
+    const inputName = document.getElementById('peerName').value;
     if (!roomId) return;
     
+    peerName = inputName || peerId;
     currentRoom = roomId;
     ws = new WebSocket(`wss://${window.location.host}/ws`);
     
     ws.onopen = () => {
         ws.send(JSON.stringify({
             event: 'join',
-            data: { peerId },
+            data: { 
+                peerId,
+                peerName 
+            },
             room: roomId
         }));
         updateStatus('Joined room: ' + roomId);
+        
+        peers.add(peerId);
+        updateParticipantsList();
     };
 
     ws.onmessage = async (event) => {
@@ -63,18 +80,24 @@ async function joinRoom() {
         switch (message.event) {
             case 'peers-in-room':
                 const existingPeers = message.data.peers;
-                for (const existingPeer of existingPeers) {
-                    if (existingPeer !== peerId) {
-                        await createPeerConnection(existingPeer);
-                        createOffer(existingPeer);
+                peers.clear();
+                for (const peer of existingPeers) {
+                    if (peer.id !== peerId) {
+                        peers.add(peer.id);
+                        peerNames.set(peer.id, peer.name); 
+                        await createPeerConnection(peer.id);
+                        createOffer(peer.id);
                     }
                 }
+                updateParticipantsList();
                 break;
 
             case 'peer-joined':
                 const newPeerId = message.data.peerId;
+                const newPeerName = message.data.peerName;
                 if (newPeerId !== peerId) {
                     peers.add(newPeerId);
+                    peerNames.set(newPeerId, newPeerName);
                     updateParticipantsList();
                 }
                 break;

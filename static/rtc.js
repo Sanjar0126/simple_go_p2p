@@ -140,8 +140,9 @@ function handlePeerLeft(peerId) {
     }
 
     peers.delete(peerId);
+    peerNames.delete(peerId);
     updateParticipantsList();
-    updateStatus(`Peer ${peerId} left the room`);
+    updateStatus(`Peer ${peerNames.get(peerId) || peerId} left the room`);
 }
 
 function handleDisconnection() {
