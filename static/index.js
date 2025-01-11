@@ -56,44 +56,4 @@ function createParticipantItem(peerId, isCurrentUser = false) {
     return li;
 }
 
-async function joinRoom() {
-    const roomId = document.getElementById('roomId').value;
-    const inputName = document.getElementById('peerName').value;
-    if (!roomId) return;
-    
-    peerName = inputName || peerId;
-    currentRoom = roomId;
-    
-    connectWebSocket();
-}
 
-function leaveRoom() {
-    intentionalDisconnect = true;
-
-    if (localStream) {
-        localStream.getTracks().forEach(track => track.stop());
-        localStream = null;
-    }
-
-    Object.keys(peerConnections).forEach(peerId => {
-        peerConnections[peerId].close();
-        delete peerConnections[peerId];
-    });
-
-    remoteStreams = {};
-
-    peers.clear();
-    updateParticipantsList();
-    updateStatus('Left the room');
-
-    if (isConnected()) {
-        ws.send(JSON.stringify({
-            event: 'disconnect',
-            data: { peerId },
-            room: currentRoom
-        }));
-    }
-
-    handleDisconnection();
-    intentionalDisconnect = false;
-}
