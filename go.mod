@@ -1,4 +1,4 @@
-module github.com/Sanjar0126/simple_go_p2p_chat
+module github.com/Sanjar0126/simple_go_p2p
 
 go 1.22.1
 
