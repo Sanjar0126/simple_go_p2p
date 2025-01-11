@@ -8,10 +8,12 @@ WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
 
-COPY server/main.go .
+COPY . ./
 COPY static/ static/
 
-RUN go build -o main .
+RUN ls
+
+RUN go build -o main server/main.go
 
 EXPOSE 8080
 

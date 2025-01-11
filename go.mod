@@ -2,6 +2,8 @@ module github.com/Sanjar0126/simple_go_p2p
 
 go 1.22.1
 
+require github.com/gorilla/websocket v1.5.3
+
 require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/ebitengine/oto/v3 v3.3.1 // indirect
@@ -10,7 +12,6 @@ require (
 	github.com/go-audio/riff v1.0.0 // indirect
 	github.com/go-audio/wav v1.1.0 // indirect
 	github.com/google/uuid v1.3.1 // indirect
-	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/hajimehoshi/oto v1.0.1 // indirect
 	github.com/pion/datachannel v1.5.8 // indirect
 	github.com/pion/dtls/v2 v2.2.12 // indirect
