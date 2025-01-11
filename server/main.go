@@ -3,7 +3,6 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -53,7 +52,7 @@ func main() {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-		
+
 		if r.URL.Path == "/ws" {
 			handleWebSocket(w, r)
 			return
@@ -63,10 +62,9 @@ func main() {
 			getRooms(w, r)
 			return
 		}
-		
+
 		http.FileServer(http.Dir("static")).ServeHTTP(w, r)
 	})
-	
 
 	log.Printf("Server starting on port %s", port)
 	if err := http.ListenAndServe(":"+port, handler); err != nil {
