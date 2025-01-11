@@ -10,8 +10,14 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+type PeerInfo struct {
+	PeerId   string `json:"peerId"`
+	PeerName string `json:"peerName,omitempty"`
+}
+
 type Room struct {
 	Peers map[string]*websocket.Conn
+	Names map[string]string
 	mu    sync.Mutex
 }
 
@@ -98,18 +104,31 @@ func handleJoin(conn *websocket.Conn, msg Message) {
 		return
 	}
 
+	peerName, _ := msg.Data["peerName"].(string)
+
 	if _, exists := rooms[roomID]; !exists {
 		rooms[roomID] = &Room{
 			Peers: make(map[string]*websocket.Conn),
+			Names: make(map[string]string),
 		}
 	}
 
 	room := rooms[roomID]
 	room.mu.Lock()
 
-	existingPeers := make([]string, 0)
+	room.Peers[peerId] = conn
+	if peerName != "" {
+		room.Names[peerId] = peerName
+	}
+
+	existingPeers := make([]PeerInfo, 0)
 	for existingPeer := range room.Peers {
-		existingPeers = append(existingPeers, existingPeer)
+		if existingPeer != peerId {
+			existingPeers = append(existingPeers, PeerInfo{
+				PeerId:   existingPeer,
+				PeerName: room.Names[existingPeer],
+			})
+		}
 	}
 
 	room.Peers[peerId] = conn
@@ -131,12 +150,13 @@ func handleJoin(conn *websocket.Conn, msg Message) {
 			err = peer.WriteJSON(Message{
 				Event: "peer-joined",
 				Data: map[string]interface{}{
-					"peerId": peerId,
+					"peerId":   peerId,
+					"peerName": peerName,
 				},
 				Room: roomID,
 			})
 			if err != nil {
-				log.Println("error sending notifying peers")
+				log.Println("error notifying peers")
 				break
 			}
 		}
