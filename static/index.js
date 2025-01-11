@@ -20,6 +20,12 @@ let peers = new Set();
 let peerName = '';
 const peerNames = new Map();
 
+let reconnectAttempts = 0;
+const MAX_RECONNECT_ATTEMPTS = 5;
+const RECONNECT_DELAY = 3000; // ms
+let reconnectTimeout;
+let intentionalDisconnect = false;
+
 function updateParticipantsList() {
     const participantsList = document.getElementById('participantsList');
     participantsList.innerHTML = '';
@@ -57,95 +63,13 @@ async function joinRoom() {
     
     peerName = inputName || peerId;
     currentRoom = roomId;
-    ws = new WebSocket(`wss://${window.location.host}/ws`);
     
-    ws.onopen = () => {
-        ws.send(JSON.stringify({
-            event: 'join',
-            data: { 
-                peerId,
-                peerName 
-            },
-            room: roomId
-        }));
-        updateStatus('Joined room: ' + roomId);
-        
-        peers.add(peerId);
-        updateParticipantsList();
-    };
-
-    ws.onmessage = async (event) => {
-        const message = JSON.parse(event.data);
-        
-        switch (message.event) {
-            case 'peers-in-room':
-                const existingPeers = message.data.peers;
-                peers.clear();
-                for (const peer of existingPeers) {
-                    if (peer.peerId !== peerId) {
-                        peers.add(peer.peerId);
-                        peerNames.set(peer.peerId, peer.name); 
-                        await createPeerConnection(peer.peerId);
-                        createOffer(peer.peerId);
-                    }
-                }
-                updateParticipantsList();
-                break;
-
-            case 'peer-joined':
-                const newPeerId = message.data.peerId;
-                const newPeerName = message.data.peerName;
-                if (newPeerId !== peerId) {
-                    peers.add(newPeerId);
-                    peerNames.set(newPeerId, newPeerName);
-                    updateParticipantsList();
-                }
-                break;
-
-            case 'peer-left':
-                const leftPeerId = message.data.peerId;
-                handlePeerLeft(leftPeerId);
-                break;
-
-            case 'offer':
-                await handleOffer(message);
-                break;
-
-            case 'answer':
-                await handleAnswer(message);
-                break;
-
-            case 'ice-candidate':
-                await handleICECandidate(message);
-                break;
-        }
-    };
-
-    ws.onclose = () => {
-        handleDisconnection();
-    };
-
-    try {
-        localStream = await navigator.mediaDevices.getUserMedia({
-            audio: {
-                echoCancellation: true,
-                noiseSuppression: true,
-                autoGainControl: true
-            }
-        });
-        
-        //local audio preview
-        const localAudio = new Audio();
-        localAudio.muted = true;
-        localAudio.srcObject = localStream;
-        localAudio.play();
-    } catch (err) {
-        console.error('Error accessing microphone:', err);
-        updateStatus('Error accessing microphone. Please check permissions.');
-    }
+    connectWebSocket();
 }
 
 function leaveRoom() {
+    intentionalDisconnect = true;
+
     if (localStream) {
         localStream.getTracks().forEach(track => track.stop());
         localStream = null;
@@ -158,15 +82,11 @@ function leaveRoom() {
 
     remoteStreams = {};
 
-    if (ws) {
-        ws.close();
-    }
-
     peers.clear();
     updateParticipantsList();
     updateStatus('Left the room');
 
-    if (ws && ws.readyState === WebSocket.OPEN) {
+    if (isConnected()) {
         ws.send(JSON.stringify({
             event: 'disconnect',
             data: { peerId },
@@ -175,4 +95,5 @@ function leaveRoom() {
     }
 
     handleDisconnection();
+    intentionalDisconnect = false;
 }

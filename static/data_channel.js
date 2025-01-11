@@ -136,6 +136,12 @@ document.getElementById('fileInput').addEventListener('change', (event) => {
 
 async function sendFile() {
     if (!file || !dataChannel) return;
+
+    if (!isConnected()) {
+        updateStatus('Connection lost. Please wait for reconnection...');
+        return;
+    }
+
     if (dataChannel.readyState !== 'open') {
         updateStatus('Connection not ready. Please wait...');
         return;

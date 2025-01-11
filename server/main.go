@@ -2,6 +2,7 @@
 package main
 
 import (
+	"encoding/json"
 	"log"
 	"net/http"
 	"os"
@@ -57,12 +58,25 @@ func main() {
 			return
 		}
 
+		if r.URL.Path == "/rooms" {
+			getRooms(w, r)
+			return
+		}
+
 		http.FileServer(http.Dir("static")).ServeHTTP(w, r)
 	})
 
 	log.Printf("Server starting on port %s", port)
 	if err := http.ListenAndServe(":"+port, handler); err != nil {
 		log.Fatal(err)
+	}
+}
+
+func getRooms(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	if err := json.NewEncoder(w).Encode(rooms); err != nil {
+		http.Error(w, "Failed to encode JSON", http.StatusInternalServerError)
 	}
 }
 
@@ -178,6 +192,7 @@ func handleDisconnect(msg Message) {
 
 	room.mu.Lock()
 	delete(room.Peers, peerId)
+	delete(room.Names, peerId)
 
 	// if room is empty, remove room from list
 	if len(room.Peers) == 0 {
