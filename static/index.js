@@ -82,11 +82,11 @@ async function joinRoom() {
                 const existingPeers = message.data.peers;
                 peers.clear();
                 for (const peer of existingPeers) {
-                    if (peer.id !== peerId) {
-                        peers.add(peer.id);
-                        peerNames.set(peer.id, peer.name); 
-                        await createPeerConnection(peer.id);
-                        createOffer(peer.id);
+                    if (peer.peerId !== peerId) {
+                        peers.add(peer.peerId);
+                        peerNames.set(peer.peerId, peer.name); 
+                        await createPeerConnection(peer.peerId);
+                        createOffer(peer.peerId);
                     }
                 }
                 updateParticipantsList();
