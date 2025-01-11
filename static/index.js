@@ -158,10 +158,6 @@ function leaveRoom() {
 
     remoteStreams = {};
 
-    if (ws) {
-        ws.close();
-    }
-
     peers.clear();
     updateParticipantsList();
     updateStatus('Left the room');
