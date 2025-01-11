@@ -8,16 +8,16 @@ import (
 	"github.com/gorilla/websocket"
 )
 
-func getRooms(w http.ResponseWriter, _ *http.Request) {
+func (h *handler) getRooms(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
-	if err := json.NewEncoder(w).Encode(rooms); err != nil {
+	if err := json.NewEncoder(w).Encode(h.rooms); err != nil {
 		http.Error(w, "Failed to encode JSON", http.StatusInternalServerError)
 	}
 }
 
-func handleWebSocket(w http.ResponseWriter, r *http.Request) {
-	conn, err := upgrader.Upgrade(w, r, nil)
+func (h *handler) handleWebSocket(w http.ResponseWriter, r *http.Request) {
+	conn, err := h.upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Printf("Websocket upgrade failed: %v", err)
 		return
@@ -33,20 +33,20 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 
 		switch msg.Event {
 		case "join":
-			handleJoin(conn, msg)
+			h.handleJoin(conn, msg)
 		case "offer":
-			handleOffer(msg)
+			h.handleOffer(msg)
 		case "answer":
-			handleAnswer(msg)
+			h.handleAnswer(msg)
 		case "ice-candidate":
-			handleICECandidate(msg)
+			h.handleICECandidate(msg)
 		case "disconnect":
-			handleDisconnect(msg)
+			h.handleDisconnect(msg)
 		}
 	}
 }
 
-func handleJoin(conn *websocket.Conn, msg Message) {
+func (h *handler) handleJoin(conn *websocket.Conn, msg Message) {
 	roomID := msg.Room
 	peerId, ok := msg.Data["peerId"].(string)
 
@@ -60,14 +60,14 @@ func handleJoin(conn *websocket.Conn, msg Message) {
 		peerName = peerId
 	}
 
-	if _, exists := rooms[roomID]; !exists {
-		rooms[roomID] = &Room{
+	if _, exists := h.rooms[roomID]; !exists {
+		h.rooms[roomID] = &Room{
 			Peers: make(map[string]*websocket.Conn),
 			Names: make(map[string]string),
 		}
 	}
 
-	room := rooms[roomID]
+	room := h.rooms[roomID]
 	room.mu.Lock()
 
 	room.Peers[peerId] = conn
@@ -118,9 +118,9 @@ func handleJoin(conn *websocket.Conn, msg Message) {
 	}
 }
 
-func handleDisconnect(msg Message) {
+func (h *handler) handleDisconnect(msg Message) {
 	roomID := msg.Room
-	room := rooms[roomID]
+	room := h.rooms[roomID]
 
 	if room == nil {
 		return
@@ -138,7 +138,7 @@ func handleDisconnect(msg Message) {
 
 	// if room is empty, remove room from list
 	if len(room.Peers) == 0 {
-		delete(rooms, roomID)
+		delete(h.rooms, roomID)
 	} else {
 		for _, peer := range room.Peers {
 			err := peer.WriteJSON(Message{
@@ -157,8 +157,8 @@ func handleDisconnect(msg Message) {
 	room.mu.Unlock()
 }
 
-func handleOffer(msg Message) {
-	room := rooms[msg.Room]
+func (h *handler) handleOffer(msg Message) {
+	room := h.rooms[msg.Room]
 	if room == nil {
 		log.Printf("Room not found: %s", msg.Room)
 		return
@@ -181,8 +181,8 @@ func handleOffer(msg Message) {
 	}
 }
 
-func handleAnswer(msg Message) {
-	room := rooms[msg.Room]
+func (h *handler) handleAnswer(msg Message) {
+	room := h.rooms[msg.Room]
 	if room == nil {
 		log.Printf("Room not found: %s", msg.Room)
 		return
@@ -205,8 +205,8 @@ func handleAnswer(msg Message) {
 	}
 }
 
-func handleICECandidate(msg Message) {
-	room := rooms[msg.Room]
+func (h *handler) handleICECandidate(msg Message) {
+	room := h.rooms[msg.Room]
 	if room == nil {
 		log.Printf("Room not found: %s", msg.Room)
 		return
