@@ -41,6 +41,9 @@
 <body>
     <h1>WebRTC file sharing and chat</h1>
     <div>
+        <input type="text" id="peerName" placeholder="Enter your name">
+    </div>
+    <div>
         <input type="text" id="roomId" placeholder="Enter room ID">
         <button onclick="joinRoom()" class="button">Join Room</button>
     </div>
@@ -81,7 +84,10 @@
     </style>
 
     <script src="config.js"></script>
-    <script src="call.js"></script>
+    <script src="ws.js"></script>
+    <script src="rtc.js"></script>
+    <script src="data_channel.js"></script>
+    <script src="status.js"></script>
     <script src="index.js"></script>
 </body>
 </html>
