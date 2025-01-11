@@ -15,8 +15,8 @@ Join same rooms. Select file and send, or start call from both sides.
    - ❌ Add volume control, mute/unmute, and call status indicators.
 ## Stability and Usability:
 1. Connection Handling:
-   - ❌ Handle dropped connections gracefully:
-      - ❌ Reconnect logic if WebSocket or peer connection fails.
+   - ⚠️ Handle dropped connections gracefully:
+      - ⚠️ Reconnect logic if WebSocket or peer connection fails.
       - ⚠️ (partially) Notify users of connection status changes.
 2. Turn Server Integration:
    - ⚠️ Implement a TURN server for better connectivity in restricted networks
