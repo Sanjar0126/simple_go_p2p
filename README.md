@@ -9,9 +9,9 @@ Join same rooms. Select file and send, or start call from both sides.
    - ✅ Add UI for selecting and transferring files.
    - ✅ Support audio file playback directly in the browser.
 2. Audio Calling
-   - ⚠️ Enable peer-to-peer audio calling.
+   - ✅ Enable peer-to-peer audio calling.
    - ⚠️ Extend WebRTC to support multiple peers in a room.
-   - ❌ Dynamic joining/leaving of peers during calls.
+   - ⚠️ Dynamic joining/leaving of peers during calls.
    - ❌ Add volume control, mute/unmute, and call status indicators.
 ## Stability and Usability:
 1. Connection Handling:
