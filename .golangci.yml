@@ -1,0 +1,212 @@
+run:
+  # default concurrency is a available CPU number
+  concurrency: 4
+
+  # timeout for analysis, e.g. 30s, 5m, default is 1m
+  timeout: 1m
+
+  # include test files or not, default is true
+  tests: true
+
+
+# all available settings of specific linters
+linters-settings:
+  funlen:
+    lines: 70
+    statements: 40
+
+  goimports:
+    # put imports beginning with prefix after 3rd-party packages;
+    # it's a comma-separated list of prefixes
+    local-prefixes: github.com/Sanjar0126/simple_go_p2p
+
+  gosec:
+    # To select a subset of rules to run.
+    # Available rules: https://github.com/securego/gosec#available-rules
+    includes:
+      - G401
+      - G306
+      - G101
+    # To specify a set of rules to explicitly exclude.
+    # Available rules: https://github.com/securego/gosec#available-rules
+    excludes:
+      - G204
+    # Exclude generated files
+    exclude-generated: true
+    # Filter out the issues with a lower severity than the given value. Valid options are: low, medium, high.
+    severity: "low"
+    # Filter out the issues with a lower confidence than the given value. Valid options are: low, medium, high.
+    confidence: "low"
+    # To specify the configuration of rules.
+    # The configuration of rules is not fully documented by gosec:
+    # https://github.com/securego/gosec#configuration
+    # https://github.com/securego/gosec/blob/569328eade2ccbad4ce2d0f21ee158ab5356a5cf/rules/rulelist.go#L60-L102
+    config:
+      G306: "0600"
+      G101:
+        pattern: "(?i)example"
+        ignore_entropy: false
+        entropy_threshold: "80.0"
+        per_char_threshold: "3.0"
+        truncate: "32"
+
+  misspell:
+    # Correct spellings using locale preferences for US or UK.
+    # Default is to use a neutral variety of English.
+    # Setting locale to US will correct the British spelling of 'colour' to 'color'.
+    locale: US
+    ignore-words:
+      - someword
+
+  nakedret:
+    # make an issue if func has more lines of code than this setting and it has naked returns; default is 30
+    max-func-lines: 30
+
+  nestif:
+    # minimal complexity of if statements to report, 5 by default
+    min-complexity: 5
+
+  nilnil:
+    # By default, nilnil checks all returned types below.
+    checked-types:
+      - ptr
+      - func
+      - iface
+      - map
+      - chan
+
+  revive:
+    # see https://github.com/mgechev/revive#available-rules for details.
+    ignore-generated-header: true
+    severity: warning
+    rules:
+      - name: var-naming
+        arguments: [["ID"], ["VM"]]
+      - name: defer
+        arguments: [["call-chain","loop"]]
+      - name: line-length-limit
+        severity: error
+        arguments: [100]
+      - name: atomic
+      - name: indent-error-flow
+        severity: warning
+      - name: add-constant
+        severity: warning
+        arguments:
+          - maxLitCount: "3"
+            allowStrs: '""'
+            allowInts: "0,1,2"
+            allowFloats: "0.0,0.,1.0,1.,2.0,2."
+
+  staticcheck:
+    # Select the Go version to target. The default is '1.13'.
+    go: "1.15"
+    # https://staticcheck.io/docs/options#checks
+    checks: [ "all" ]
+
+  stylecheck:
+    # Select the Go version to target. The default is '1.13'.
+    go: "1.15"
+    # https://staticcheck.io/docs/options#checks
+    checks: [ "all", "-ST1000", "-ST1003", "-ST1016", "-ST1020", "-ST1021", "-ST1022" ]
+    # https://staticcheck.io/docs/options#dot_import_whitelist
+    dot-import-whitelist:
+      - fmt
+    # https://staticcheck.io/docs/options#initialisms
+    initialisms: [ "ACL", "API", "ASCII", "CPU", "CSS", "DNS", "EOF", "GUID", "HTML", "HTTP", "HTTPS", "ID", "IP", "JSON", "QPS", "RAM", "RPC", "SLA", "SMTP", "SQL", "SSH", "TCP", "TLS", "TTL", "UDP", "UI", "GID", "UID", "UUID", "URI", "URL", "UTF8", "VM", "XML", "XMPP", "XSRF", "XSS" ]
+    # https://staticcheck.io/docs/options#http_status_code_whitelist
+    http-status-code-whitelist: [ "200", "400", "404", "500" ]
+
+  tagliatelle:
+    # check the struck tag name case
+    case:
+      # use the struct field name to check the name of the struct tag
+      use-field-name: true
+      rules:
+        # any struct tag type can be used.
+        # support string case: `camel`, `pascal`, `kebab`, `snake`, `goCamel`, `goPascal`, `goKebab`, `goSnake`, `upper`, `lower`
+        json: snake
+        yaml: snake
+        xml: snake
+        bson: snake
+        avro: snake
+        mapstructure: kebab
+
+  unused:
+    # Select the Go version to target. The default is '1.13'.
+    go: "1.15"
+
+  varnamelen:
+    # The longest distance, in source lines, that is being considered a "small scope." (defaults to 5)
+    # Variables used in at most this many lines will be ignored.
+    max-distance: 5
+    # The minimum length of a variable's name that is considered "long." (defaults to 3)
+    # Variable names that are at least this long will be ignored.
+    min-name-length: 2
+    # Check method receiver names. (defaults to false)
+    check-receiver: false
+    # Check named return values. (defaults to false)
+    check-return: false
+    # Ignore "ok" variables that hold the bool return value of a type assertion. (defaults to false)
+    ignore-type-assert-ok: false
+    # Ignore "ok" variables that hold the bool return value of a map index. (defaults to false)
+    ignore-map-index-ok: false
+    # Ignore "ok" variables that hold the bool return value of a channel receive. (defaults to false)
+    ignore-chan-recv-ok: false
+    # Optional list of variable names that should be ignored completely. (defaults to empty list)
+    ignore-names:
+      - err
+      - i
+      - j
+      - k
+      - r
+    # Optional list of variable declarations that should be ignored completely. (defaults to empty list)
+    # Entries must be in the form of "<variable name> <type>" or "<variable name> *<type>" for
+    # variables, or "const <name>" for constants.
+    ignore-decls:
+      - c echo.Context
+      - t testing.T
+      - f *foo.Bar
+      - e error
+      - i int
+      - const C
+
+  whitespace:
+    multi-if: false   # Enforces newlines (or comments) after every multi-line if statement
+    multi-func: false # Enforces newlines (or comments) after every multi-line function signature
+
+  wsl:
+    # See https://github.com/bombsimon/wsl/blob/master/doc/configuration.md for
+    # documentation of available settings. These are the defaults for
+    # `golangci-lint`.
+    allow-assign-and-anything: false
+    allow-assign-and-call: true
+    allow-cuddle-declarations: false
+    allow-multiline-assign: true
+    allow-separated-leading-comment: false
+    allow-trailing-comment: false
+    force-case-trailing-whitespace: 0
+    force-err-cuddling: false
+    force-short-decl-cuddling: false
+    strict-append: true
+
+linters:
+  disable-all: false
+  enable:
+    - wsl
+    - govet
+    - whitespace
+#    - varnamelen
+    - unused
+    - tagliatelle
+    - stylecheck
+    - staticcheck
+    - revive
+    - nilnil
+    - nakedret
+    - misspell
+    - gosimple
+    - gosec
+    - goimports
+    - funlen
+  fast: false
