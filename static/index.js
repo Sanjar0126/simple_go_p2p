@@ -25,7 +25,7 @@ function updateParticipantsList() {
     participantsList.innerHTML = '';
     
     const title = document.createElement('h3');
-    title.textContent = `Participants (${peers.size})`;
+    title.textContent = `Participants (${peers.size + 1})`;
     participantsList.appendChild(title);
     
     const list = document.createElement('ul');
@@ -41,7 +41,7 @@ function updateParticipantsList() {
     participantsList.appendChild(list);
 }
 
-function createParticipantItem(text) {
+function createParticipantItem(peerId, isCurrentUser = false) {
     const li = document.createElement('li');
     const displayName = isCurrentUser ? 
         (peerName || peerId + ' (You)') : 

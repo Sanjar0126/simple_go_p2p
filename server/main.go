@@ -2,6 +2,7 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -254,6 +255,8 @@ func handleICECandidate(msg Message) {
 		log.Printf("Room not found: %s", msg.Room)
 		return
 	}
+
+	fmt.Println(msg)
 
 	target, ok := msg.Data["target"].(string)
 	if !ok {
