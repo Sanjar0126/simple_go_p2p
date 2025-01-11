@@ -144,33 +144,3 @@ function handlePeerLeft(peerId) {
     updateParticipantsList();
     updateStatus(`Peer ${peerNames.get(peerId) || peerId} left the room`);
 }
-
-function handleDisconnection() {
-    if (localStream) {
-        localStream.getTracks().forEach(track => track.stop());
-        localStream = null;
-    }
-
-    Object.keys(peerConnections).forEach(peerId => {
-        if (peerConnections[peerId]) {
-            peerConnections[peerId].close();
-            delete peerConnections[peerId];
-        }
-    });
-
-    Object.keys(remoteStreams).forEach(peerId => {
-        delete remoteStreams[peerId];
-    });
-
-    if (ws) {
-        ws.close();
-        ws = null;
-    }
-
-    peers.clear();
-    currentRoom = null;
-    updateParticipantsList();
-    updateStatus('Disconnected from room');
-}
-
-
